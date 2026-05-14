@@ -2,3 +2,5 @@
 dashboard/__pycache__/
 dashboard/services/__pycache__/
 db.sqlite3
+jira_insight_v2/__pycache__/
+*.pyc
