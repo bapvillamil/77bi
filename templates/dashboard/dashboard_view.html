@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>77BI — Report View</title>
+  {% load static %}
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --blue: #1D4ED8; --blue-lt: #EFF6FF; --blue-md: #DBEAFE;
+      --text: #111827; --text2: #374151; --text3: #6B7280;
+      --border: #E5E7EB; --bg: #F3F4F6; --surface: #FFFFFF;
+      --sans: 'Inter', sans-serif; --mono: 'IBM Plex Mono', monospace;
+      --topbar-h: 52px;
+    }
+    html, body {
+      background: var(--bg); color: var(--text);
+      font-family: var(--sans); font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+      height: 100%; overflow: hidden;
+    }
+
+    /* ── Topbar ── */
+    .topbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      height: var(--topbar-h);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px; gap: 16px;
+    }
+    .topbar-left  { display: flex; align-items: center; gap: 14px; }
+    .topbar-right { display: flex; align-items: center; gap: 8px; }
+
+    .logo { display: flex; align-items: center; gap: 8px; }
+    .logo-text { font-weight: 700; font-size: 15px; letter-spacing: -0.02em; }
+
+    .dash-title-input {
+      font-family: var(--sans); font-size: 14px; font-weight: 500;
+      border: none; border-bottom: 1.5px solid transparent; outline: none;
+      color: var(--text); background: transparent; min-width: 240px;
+      padding: 2px 4px; transition: border-color 0.15s;
+    }
+    .dash-title-input:focus { border-bottom-color: var(--blue); }
+
+    .btn {
+      display: flex; align-items: center; gap: 6px;
+      height: 34px; padding: 0 14px; border-radius: 7px;
+      font-size: 12px; font-weight: 500; cursor: pointer;
+      transition: all 0.15s; white-space: nowrap; border: none;
+    }
+    .btn-outline { background: var(--surface); border: 1.5px solid var(--border); color: var(--text2); }
+    .btn-outline:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-lt); }
+    .btn-green  { background: #059669; color: white; } .btn-green:hover  { background: #047857; }
+    .btn-amber  { background: #D97706; color: white; } .btn-amber:hover  { background: #B45309; }
+    .sep { width: 1px; height: 24px; background: var(--border); }
+    .btn-back {
+      font-size: 12px; color: var(--text3); background: none; border: none;
+      cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0 4px;
+    }
+    .btn-back:hover { color: var(--blue); }
+
+    /* ── Two-panel workspace ── */
+    .workspace {
+      position: fixed;
+      top: var(--topbar-h); left: 0; right: 0; bottom: 0;
+      display: flex; overflow: hidden;
+    }
+
+    /* LEFT: scrollable charts column */
+    .charts-col {
+      flex: 1; min-width: 0;
+      overflow-y: auto; overflow-x: hidden;
+      padding: 20px; display: flex; flex-direction: column; gap: 16px;
+      background: var(--bg);
+    }
+
+    /* RIGHT: fixed insight panel */
+    .insight-col {
+      width: 300px; flex-shrink: 0;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .insight-col-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 4px;
+      flex-shrink: 0;
+    }
+    .insight-col-label {
+      font-family: var(--mono); font-size: 10px; font-weight: 500;
+      color: var(--blue); text-transform: uppercase; letter-spacing: 0.07em;
+    }
+    .insight-col-meta {
+      font-size: 11px; color: var(--text3);
+    }
+    .insight-col-body {
+      flex: 1; overflow-y: auto;
+      padding: 16px;
+    }
+    .insight-empty-state {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 10px; padding: 32px 16px; text-align: center; color: var(--text3);
+    }
+    .insight-empty-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: var(--blue-lt); display: flex; align-items: center; justify-content: center;
+    }
+    .insight-empty-title { font-size: 13px; font-weight: 500; color: var(--text2); }
+    .insight-empty-sub   { font-size: 12px; line-height: 1.7; }
+
+    .insight-content {
+      font-size: 12px; color: var(--text2);
+      line-height: 1.85; white-space: pre-wrap;
+    }
+
+    /* ── Widget cards ── */
+    .widget-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    /* KPI cards sit in a flex-row at the bottom of the charts col */
+    .kpi-row {
+      display: flex; flex-wrap: wrap; gap: 12px;
+    }
+    .kpi-card {
+      flex: 1; min-width: 140px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      overflow: hidden;
+    }
+
+    .widget-header {
+      background: var(--blue); padding: 10px 16px;
+      display: flex; align-items: center;
+    }
+    .widget-title {
+      font-size: 12px; font-weight: 600; color: white; flex: 1;
+    }
+
+    /* Chart area */
+    .chart-area {
+      padding: 14px; position: relative;
+    }
+    .chart-canvas-wrap {
+      position: relative; height: 260px;
+    }
+    .chart-canvas-wrap canvas {
+      position: absolute; top: 0; left: 0;
+      width: 100% !important; height: 100% !important;
+    }
+
+    /* KPI display */
+    .kpi-display {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 20px 16px; text-align: center;
+    }
+    .kpi-label-top {
+      font-size: 10px; font-weight: 600; color: var(--text3);
+      text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 8px;
+    }
+    .kpi-num {
+      font-size: 40px; font-weight: 700; color: var(--blue); line-height: 1;
+    }
+
+    /* Empty state */
+    .empty-dash {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 300px; text-align: center;
+      color: var(--text3); font-size: 14px; gap: 8px;
+    }
+    .empty-dash a { color: var(--blue); text-decoration: none; font-weight: 500; }
+
+    /* ── Export overlay ── */
+    .export-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(249,250,251,0.85); backdrop-filter: blur(3px);
+      z-index: 300; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px;
+    }
+    .export-overlay.active { display: flex; }
+    .export-spinner {
+      width: 36px; height: 36px;
+      border: 3px solid #DBEAFE; border-top-color: var(--blue);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .export-msg { font-size: 14px; color: var(--text2); }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(60px);
+      background: #1F2937; color: white; border-radius: 8px;
+      padding: 10px 20px; font-size: 13px; z-index: 400;
+      transition: transform 0.3s; pointer-events: none;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    @media print {
+      .topbar { display: none !important; }
+      .workspace { top: 0; }
+      .insight-col { display: none; }
+      .widget-card { break-inside: avoid; page-break-inside: avoid; }
+      body { background: white; overflow: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Topbar ── -->
+<header class="topbar">
+  <div class="topbar-left">
+    <button class="btn-back" onclick="window.history.back()">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M9 11L5 7l4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Back
+    </button>
+    <div class="sep"></div>
+    <div class="logo">
+      <svg width="20" height="20" viewBox="0 0 22 22" fill="none">
+        <rect x="1"  y="1"  width="9" height="9" rx="2" fill="#2563EB"/>
+        <rect x="12" y="1"  width="9" height="9" rx="2" fill="#2563EB" opacity="0.4"/>
+        <rect x="1"  y="12" width="9" height="9" rx="2" fill="#2563EB" opacity="0.4"/>
+        <rect x="12" y="12" width="9" height="9" rx="2" fill="#2563EB" opacity="0.7"/>
+      </svg>
+      <span class="logo-text">77BI</span>
+    </div>
+    <input type="text" class="dash-title-input" id="dashTitle" value="My Report" placeholder="Dashboard title…"/>
+  </div>
+  <div class="topbar-right">
+    <button class="btn btn-outline" onclick="exportPNG()">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/>
+        <path d="M4 7l2 2 4-4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Save as PNG
+    </button>
+    <button class="btn btn-green" onclick="exportPDF()">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M2 2h7l3 3v7a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" stroke="white" stroke-width="1.2"/>
+        <path d="M9 2v3h3" stroke="white" stroke-width="1.2"/>
+      </svg>
+      Save as PDF
+    </button>
+    <button class="btn btn-amber" onclick="exportPPTX()">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <rect x="1" y="2" width="12" height="10" rx="1.5" stroke="white" stroke-width="1.2"/>
+        <path d="M4 6h4M4 8.5h6" stroke="white" stroke-width="1" stroke-linecap="round"/>
+      </svg>
+      Save as PPTX
+    </button>
+  </div>
+</header>
+
+<!-- ── Two-panel workspace ── -->
+<div class="workspace">
+
+  <!-- LEFT: stacked charts -->
+  <div class="charts-col" id="chartsCol">
+    {% if widgets %}
+
+      <!-- Chart data registry -->
+      <script>
+      window.WIDGET_CHART_DATA = {
+        {% for widget in widgets %}
+        "{{ widget.id }}": {{ widget.chart_data_json|safe }}{% if not forloop.last %},{% endif %}
+        {% endfor %}
+      };
+      </script>
+
+      <!-- Non-KPI widgets first -->
+      {% for widget in widgets %}
+        {% with cd=widget.chart_data %}
+        {% if cd.chart_type != 'kpi' and cd.type != 'kpi' %}
+        <div class="widget-card" data-widget-id="{{ widget.id }}">
+          <div class="widget-header">
+            <span class="widget-title">{{ widget.title|default:"Chart" }}</span>
+          </div>
+          <div class="chart-area" id="chart-area-{{ widget.id }}">
+            <div class="chart-canvas-wrap" id="chart-wrap-{{ widget.id }}">
+              <canvas id="canvas-{{ widget.id }}"></canvas>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+        {% endwith %}
+      {% endfor %}
+
+      <!-- KPI widgets in a flex row at the bottom -->
+      {% with has_kpi=False %}
+      <div class="kpi-row" id="kpiRow" style="display:none">
+        {% for widget in widgets %}
+          {% with cd=widget.chart_data %}
+          {% if cd.chart_type == 'kpi' or cd.type == 'kpi' %}
+          <div class="kpi-card" data-widget-id="{{ widget.id }}">
+            <div class="widget-header" style="padding:8px 14px;">
+              <span class="widget-title" style="font-size:11px;">{{ widget.title|default:"KPI" }}</span>
+            </div>
+            <div class="kpi-display" id="chart-area-{{ widget.id }}">
+              <!-- filled by JS -->
+            </div>
+          </div>
+          {% endif %}
+          {% endwith %}
+        {% endfor %}
+      </div>
+      {% endwith %}
+
+    {% else %}
+      <div class="empty-dash">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" style="opacity:0.3">
+          <rect x="2" y="2" width="16" height="16" rx="3" fill="#6B7280"/>
+          <rect x="22" y="2" width="16" height="16" rx="3" fill="#6B7280" opacity="0.5"/>
+          <rect x="2" y="22" width="16" height="16" rx="3" fill="#6B7280" opacity="0.5"/>
+          <rect x="22" y="22" width="16" height="16" rx="3" fill="#6B7280" opacity="0.8"/>
+        </svg>
+        <p>No widgets in your dashboard yet.</p>
+        <p><a href="/">Go back to the BI Builder</a> and create some visualizations first.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- RIGHT: shared insight panel -->
+  <div class="insight-col">
+    <div class="insight-col-header">
+      <div class="insight-col-label">AI Insight</div>
+      <div class="insight-col-meta" id="insightMeta">No insight generated yet</div>
+    </div>
+    <div class="insight-col-body" id="insightBody">
+      <div class="insight-empty-state" id="insightEmptyState">
+        <div class="insight-empty-icon">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <circle cx="10" cy="10" r="8" stroke="#2563EB" stroke-width="1.5"/>
+            <path d="M7 10l2 2 4-4" stroke="#2563EB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="insight-empty-title">No insight yet</div>
+        <div class="insight-empty-sub">Use the AI query bar on the main dashboard to generate an insight. It will appear here.</div>
+      </div>
+      <div class="insight-content" id="insightText" style="display:none"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Overlay & Toast ── -->
+<div class="export-overlay" id="exportOverlay">
+  <div class="export-spinner"></div>
+  <div class="export-msg" id="exportMsg">Preparing export…</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<!-- Config -->
+<script>
+window.APP_CONFIG = {
+  apiExportPDF:  "{% url 'export_pdf' %}",
+  apiExportPPTX: "{% url 'export_pptx' %}",
+  csrfToken:     "{{ csrf_token }}",
+};
+window.SESSION_INSIGHT = "{{ insight_text|default:''|escapejs }}";
+</script>
+
+<script>
+'use strict';
+const CFG = window.APP_CONFIG;
+if (typeof ChartDataLabels !== 'undefined') { Chart.register(ChartDataLabels); }
+
+const CHART_COLORS = [
+  '#3B82F6','#10B981','#F59E0B','#EF4444',
+  '#8B5CF6','#EC4899','#06B6D4','#84CC16','#F97316','#6366F1'
+];
+
+// ── Init: render all charts + populate insight ────────────────────────────────
+window.addEventListener('load', () => {
+  const registry = window.WIDGET_CHART_DATA || {};
+
+  // Show KPI row only if there are KPI widgets
+  const kpiRow = document.getElementById('kpiRow');
+  let hasKpi = false;
+
+  document.querySelectorAll('[data-widget-id]').forEach(card => {
+    const widgetId = card.dataset.widgetId;
+    const cd = registry[widgetId];
+    if (!cd) return;
+
+    const chartType = cd.chart_type || cd.type;
+    if (chartType === 'kpi') {
+      hasKpi = true;
+      renderKPI(widgetId, cd);
+    } else {
+      renderChart(widgetId, cd);
+    }
+  });
+
+  if (kpiRow && hasKpi) kpiRow.style.display = 'flex';
+
+  // Populate the shared insight panel
+  if (window.SESSION_INSIGHT) {
+    showInsight(window.SESSION_INSIGHT);
+  }
+});
+
+// ── Render a regular chart ────────────────────────────────────────────────────
+function renderChart(widgetId, cd) {
+  const chartTypeName = cd.chart_type || cd.type;
+  if (!chartTypeName) return;
+
+  const wrap   = document.getElementById(`chart-wrap-${widgetId}`);
+  const canvas = document.getElementById(`canvas-${widgetId}`);
+  if (!wrap || !canvas) return;
+
+  const { labels = [], values = [], x_axis_label, y_axis_label, datasets } = cd;
+
+  const isHorizontal = chartTypeName === 'horizontalBar';
+  const jsType = isHorizontal        ? 'bar'
+               : chartTypeName === 'area' ? 'line'
+               : chartTypeName === 'pie'  ? 'pie'
+               : chartTypeName || 'bar';
+  const isLine  = chartTypeName === 'line' || chartTypeName === 'area';
+  const isRound = chartTypeName === 'doughnut' || chartTypeName === 'pie';
+
+  const builtDatasets = datasets ? datasets : [{
+    label:           y_axis_label || 'Value',
+    data:            values,
+    backgroundColor: isLine
+      ? 'rgba(59,130,246,0.1)'
+      : labels.map((_, i) => CHART_COLORS[i % CHART_COLORS.length] + (isRound ? '' : 'CC')),
+    borderColor:     isLine ? '#3B82F6' : labels.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+    borderWidth:     isLine ? 2 : 1,
+    fill:            chartTypeName === 'area',
+    tension:         0.4,
+    pointBackgroundColor: '#3B82F6',
+    pointRadius:     isLine ? 3 : 0,
+  }];
+
+  const showVals = cd.show_values !== false;
+  const hasPlugin = typeof ChartDataLabels !== 'undefined';
+
+  const dlConfig = hasPlugin && showVals ? {
+    display: true,
+    color:   isRound ? '#fff' : '#374151',
+    font:    { size: 11, weight: '600', family: 'Inter' },
+    formatter: v => {
+      if (v == null) return '';
+      const n = parseFloat(v);
+      if (isNaN(n)) return v;
+      return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : n.toLocaleString();
+    },
+    anchor: isRound ? 'center' : (isHorizontal ? 'end' : 'end'),
+    align:  isRound ? 'center' : (isHorizontal ? 'right' : 'top'),
+    clamp: true, offset: 4,
+  } : { display: false };
+
+  new Chart(canvas, {
+    type: jsType,
+    data: { labels, datasets: builtDatasets },
+    plugins: hasPlugin && showVals ? [ChartDataLabels] : [],
+    options: {
+      indexAxis:           isHorizontal ? 'y' : 'x',
+      responsive:          true,
+      maintainAspectRatio: false,
+      animation:           { duration: 400 },
+      layout: { padding: showVals && !isRound ? { top: 20, right: isHorizontal ? 36 : 6 } : 0 },
+      plugins: {
+        legend: {
+          display:  isRound || (datasets && datasets.length > 1),
+          position: 'bottom',
+          labels:   { color: '#6B7280', font: { size: 11, family: 'Inter' }, boxWidth: 12, padding: 14 },
+        },
+        tooltip: {
+          backgroundColor: '#1F2937', titleColor: '#F9FAFB',
+          bodyColor: '#D1D5DB', borderColor: '#374151', borderWidth: 1, padding: 10,
+        },
+        datalabels: dlConfig,
+      },
+      scales: isRound ? {} : {
+        x: {
+          grid:  { color: '#F3F4F6' },
+          ticks: { color: '#9CA3AF', font: { size: 11 } },
+          title: { display: !!x_axis_label, text: x_axis_label || '', color: '#6B7280', font: { size: 11 } },
+        },
+        y: {
+          grid:  { color: '#F3F4F6' },
+          ticks: { color: '#9CA3AF', font: { size: 11 } },
+          title: { display: !!y_axis_label, text: y_axis_label || '', color: '#6B7280', font: { size: 11 } },
+        },
+      },
+    },
+  });
+}
+
+// ── Render a KPI tile ─────────────────────────────────────────────────────────
+function renderKPI(widgetId, cd) {
+  const area = document.getElementById(`chart-area-${widgetId}`);
+  if (!area) return;
+  const val   = (cd.values && cd.values[0] != null) ? cd.values[0] : 0;
+  const label = cd.result_label || cd.y_axis_label || cd.x_axis_label || 'Value';
+  const fmt   = cd.kpi_format || 'number';
+  area.innerHTML = `
+    <div class="kpi-label-top">${escHtml(label)}</div>
+    <div class="kpi-num">${formatKPIValue(val, fmt)}</div>`;
+}
+
+// ── Shared insight panel ──────────────────────────────────────────────────────
+function showInsight(text) {
+  const emptyState = document.getElementById('insightEmptyState');
+  const insightEl  = document.getElementById('insightText');
+  const metaEl     = document.getElementById('insightMeta');
+  if (emptyState)  emptyState.style.display = 'none';
+  if (insightEl) {
+    insightEl.style.display = '';
+    insightEl.textContent   = text;
+  }
+  if (metaEl) metaEl.textContent = 'AI-generated · Claude Sonnet';
+}
+
+// ── KPI format ────────────────────────────────────────────────────────────────
+function formatKPIValue(val, fmt) {
+  if (val == null) return '—';
+  const n = parseFloat(val);
+  if (isNaN(n)) return String(val);
+  switch (fmt) {
+    case 'number':       return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    case 'decimal':      return n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+    case 'percentage':   return n.toFixed(1) + '%';
+    case 'currency_usd': return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    case 'currency_php': return '₱' + n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    case 'compact':
+      if (Math.abs(n) >= 1e6)  return (n / 1e6).toFixed(1)  + 'M';
+      if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1) + 'k';
+      return n.toLocaleString('en-US', { maximumFractionDigits: 1 });
+    default: return n.toLocaleString('en-US');
+  }
+}
+
+// ── Collect widget data for export ────────────────────────────────────────────
+async function collectWidgets() {
+  const items    = [];
+  const registry = window.WIDGET_CHART_DATA || {};
+
+  // Single shared insight text
+  const insightEl  = document.getElementById('insightText');
+  const sharedInsight = (insightEl && insightEl.style.display !== 'none')
+    ? insightEl.textContent : '';
+
+  for (const card of document.querySelectorAll('[data-widget-id]')) {
+    const widgetId = card.dataset.widgetId;
+    const title    = card.querySelector('.widget-title')?.textContent || 'Chart';
+
+    // Capture the chart/kpi area as PNG
+    const chartArea = document.getElementById(`chart-area-${widgetId}`);
+    let imgB64 = '';
+    if (chartArea) {
+      try {
+        const cvs = await html2canvas(chartArea, { backgroundColor: '#ffffff', scale: 2, logging: false });
+        imgB64 = cvs.toDataURL('image/png');
+      } catch (e) { console.warn('html2canvas error', e); }
+    }
+    items.push({ title, chart_image_b64: imgB64, insight_text: sharedInsight });
+  }
+  return items;
+}
+
+// ── PNG export ────────────────────────────────────────────────────────────────
+async function exportPNG() {
+  showOverlay('Generating PNG…');
+
+  const chartsCol   = document.getElementById('chartsCol');
+  const insightCol  = document.querySelector('.insight-col');
+  const insightBody = document.getElementById('insightBody');
+
+  // Save current styles so we can restore them after capture
+  const saved = {
+    colOverflow:   insightCol.style.overflow,
+    colHeight:     insightCol.style.height,
+    colMaxHeight:  insightCol.style.maxHeight,
+    bodyOverflow:  insightBody.style.overflow,
+    bodyHeight:    insightBody.style.height,
+    bodyMaxHeight: insightBody.style.maxHeight,
+    bodyScrollTop: insightBody.scrollTop,
+  };
+
+  try {
+    // Expand insight column to its full content height before capturing
+    const headerH = insightCol.querySelector('.insight-col-header').offsetHeight;
+    const fullH   = insightBody.scrollHeight + headerH;
+
+    insightCol.style.overflow  = 'visible';
+    insightCol.style.height    = fullH + 'px';
+    insightCol.style.maxHeight = 'none';
+
+    insightBody.style.overflow  = 'visible';
+    insightBody.style.height    = insightBody.scrollHeight + 'px';
+    insightBody.style.maxHeight = 'none';
+    insightBody.scrollTop       = 0;
+
+    // Two rAF yields so the browser repaints before html2canvas reads the DOM
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const opts        = { backgroundColor: '#F3F4F6', scale: 2, useCORS: true, logging: false };
+    const chartsFullH = chartsCol.scrollHeight;
+    const insightFullH = insightCol.scrollHeight;
+
+    const [cvsCharts, cvsInsight] = await Promise.all([
+      html2canvas(chartsCol,  { ...opts, height: chartsFullH,   windowHeight: chartsFullH   }),
+      html2canvas(insightCol, { ...opts, height: insightFullH,  windowHeight: insightFullH  }),
+    ]);
+
+    // Stitch side-by-side
+    const totalW = cvsCharts.width + cvsInsight.width;
+    const totalH = Math.max(cvsCharts.height, cvsInsight.height);
+
+    const combined = document.createElement('canvas');
+    combined.width  = totalW;
+    combined.height = totalH;
+    const ctx = combined.getContext('2d');
+
+    ctx.fillStyle = '#F3F4F6';
+    ctx.fillRect(0, 0, totalW, totalH);
+    ctx.drawImage(cvsCharts,  0,              0);
+    ctx.drawImage(cvsInsight, cvsCharts.width, 0);
+
+    const a = document.createElement('a');
+    a.download = '77BI_dashboard.png';
+    a.href     = combined.toDataURL('image/png');
+    a.click();
+    showToast('PNG downloaded ✓');
+
+  } catch (e) { showToast('PNG failed: ' + e.message); }
+  finally {
+    // Always restore original styles regardless of success or failure
+    insightCol.style.overflow  = saved.colOverflow;
+    insightCol.style.height    = saved.colHeight;
+    insightCol.style.maxHeight = saved.colMaxHeight;
+
+    insightBody.style.overflow  = saved.bodyOverflow;
+    insightBody.style.height    = saved.bodyHeight;
+    insightBody.style.maxHeight = saved.bodyMaxHeight;
+    insightBody.scrollTop       = saved.bodyScrollTop;
+
+    hideOverlay();
+  }
+}
+
+// ── PDF export ────────────────────────────────────────────────────────────────
+async function exportPDF() {
+  showOverlay('Building PDF…');
+  try {
+    const widgets = await collectWidgets();
+    const title   = document.getElementById('dashTitle').value || '77BI Dashboard';
+    const res = await fetch(CFG.apiExportPDF, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CFG.csrfToken },
+      body:    JSON.stringify({ widgets, title }),
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'PDF failed'); }
+    triggerDownload(await res.blob(), '77BI_dashboard.pdf');
+    showToast('PDF downloaded ✓');
+  } catch (e) { showToast('PDF failed: ' + e.message); }
+  finally     { hideOverlay(); }
+}
+
+// ── PPTX export ───────────────────────────────────────────────────────────────
+async function exportPPTX() {
+  showOverlay('Building PowerPoint…');
+  try {
+    const widgets = await collectWidgets();
+    const title   = document.getElementById('dashTitle').value || '77BI Dashboard';
+    const res = await fetch(CFG.apiExportPPTX, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CFG.csrfToken },
+      body:    JSON.stringify({ widgets, title }),
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'PPTX failed'); }
+    triggerDownload(await res.blob(), '77BI_dashboard.pptx');
+    showToast('PPTX downloaded ✓');
+  } catch (e) { showToast('PPTX failed: ' + e.message); }
+  finally     { hideOverlay(); }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function triggerDownload(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+function showOverlay(msg) {
+  document.getElementById('exportMsg').textContent = msg;
+  document.getElementById('exportOverlay').classList.add('active');
+}
+function hideOverlay() { document.getElementById('exportOverlay').classList.remove('active'); }
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+function escHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+</script>
+</body>
+</html>

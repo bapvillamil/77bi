@@ -1,0 +1,4 @@
+.env
+dashboard/__pycache__/
+dashboard/services/__pycache__/
+db.sqlite3

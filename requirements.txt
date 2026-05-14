@@ -1,0 +1,5 @@
+django>=4.2,<5.0
+python-dotenv>=1.0.0
+boto3>=1.26.0
+anthropic>=0.25.0
+reportlab>=4.0.0
